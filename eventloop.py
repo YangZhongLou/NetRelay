@@ -122,4 +122,72 @@ class EventLoop(object):
 
     def poll(self, timeout = None):
         events = self._impl.poll(timeout)
-        return [(self,_fdmap[fd][0], fd, event) for fd, event in events]
+        return [(self, _fdmap[fd][0], fd, event) for fd, event in events]
+
+    def add(self, f, mode, handler):
+        fd = f.fileno()
+        self._fdmap[fd] = (f, handler)
+        self._impl.register(fd, mode)
+
+    def remove(self, f)
+        fd = f.fileno()
+        del self._fdmap[fd]
+        self._impl.unregister(fd)
+
+    def add_periodic(self, callback):
+        self._periodic_callbacks.append(callback)
+
+    def remove_periodic(self, callback):
+        self._periodic_callbacks.remove(callback)
+
+    def modify(self, f, mode):
+        fd = f.fileno()
+        self._impl.modify(fd, mode)
+
+    def stop(self):
+        self._stopping = True
+
+    def run(self):
+        events = []
+        while not self._stopping:
+            asap = False
+            try:
+                events = self.poll(TIMEOUT_PRECISION)
+            except (OSError, IOError) as e:
+                if errno_from_exception(e) in (errno.EPIPE, errno.EINTR):
+                    asap = True
+                    logging.debug('poll:%s', e)
+                else:
+                    logging.error('poll:%s', e)
+                    traceback.print_exc()
+                    continue
+
+            for sock, fd, event in events:
+                handler = self._fdmap.get(fd, None)
+                if handler is not None:
+                    handler = handler[1]
+                    try:
+                        handler.handle_event(sock, fd, event)
+                    except (OSError, IOError) as e:
+                        shell.print_exception(e)
+            now = time.time()
+            if asap or now - self._last_time >= TIMEOUT_PRECISION:
+                for callback in self._periodic_callbacks:
+                    callback()
+                self._last_time = now
+
+    def __del__(self):
+        self._impl.close()
+
+def errno_from_exception(e):
+    if hasattr(e, 'errno'):
+        return e.errno
+    elif e.args:
+        return e.args[0]
+    else:
+        return None
+
+def get_sock_error(sock):
+    error_number = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+    return socket.error(error_number, os.strerror(error_number))
+
