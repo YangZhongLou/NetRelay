@@ -190,7 +190,47 @@ def check_config(config, is_local):
         print_help(is_local)
         sys.exit(2)
 
-    if not is_local and not config.get('password', None)
+    if not is_local and not config.get('password', None) \
+        and not config.get('port_password', None) \
+        and not config.get('manager_address'):
+        logging.error('password or port_password not specified')
+        print_help(is_local)
+        sys.exit(2)
+
+    if 'local_port' in config:
+        config['local_port'] = int(config['local_port'])
+
+    if 'server_port' in config and type(config['server_port']) != list:
+        config['server_port'] = int(config['server_port'])
+
+    if config.get('local_address', '') in [b'0.0.0.0']:
+        logging.warning('warning: server set to listen on %s:%s, are you sure?' %
+                        (to_str(config['server']), config['server_port']))
+
+    if (config.get('method', '') or '').lower() == 'table':
+        logging.warning('warning: table is not safe; please use a safer cipher,'
+                        'like AES-256-CFB')
+
+    if (config.get('method', '') or '').lower() == 'rc4':
+        logging.warning('warning: RC4 is not safe: please use a safer cipher,'
+                         'like AES-256-CFB')
+
+    if config.get('timeout', 300) < 100:
+        logging.warning('warning your timeout %s seems too long' %
+                        int(config.get('timeout')))
+
+    if config.get('password') in [b'mypassword']:
+        logging.error("DON'T USE DEFAULT PASSWORD! Please change it in your"
+                      "config.json!")
+        sys.exit(1)
+
+    if config.get('user', None) is not None:
+        if os.name != 'posix':
+            logging.error('user can be used only on Unix')
+            sys.exit(1)
+
+    encrypt.try_cipher(config['password'], config['method'])
+
 
 def print_shadowsocks():
     version = ''
