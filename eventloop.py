@@ -1,7 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from collections import defaultdict
+import os
+
+__all__ = ['EventLoop', 'POLL_NULL', 'POLL_IN', 'POLL_OUT', 'POLL_ERR',
+            'POLL_HUP', 'POLL_NVAL', 'EVENT_NAMES']
 
 POLL_NULL = 0x00
 POLL_IN = 0x01
@@ -19,11 +22,13 @@ EVENT_NAMES = {
     POLL_NVAL: 'POLL_NVAL',
 }
 
+#we check timeouts every TIMEOUT_PRECISION seconds
+TIMEOUT_PRECISION = 10
+
 class KqueueLoop(object):
     MAX_EVENTS = 1024
     def __init__(self):
-        self._kqueque = select.kqueue()
-        #file descriptors?
+        self._kqueue = select.kqueue()
         self._fds = {}
 
     def _control(self, fd, mode, flags):
@@ -37,7 +42,7 @@ class KqueueLoop(object):
 
     def poll(self, timeout):
         if timeout < 0:
-            timeout = None
+            timeout = None # kqueue behavior
         events = self._kqueue.control(None, KqueueLoop.MAX_EVENTS, timeout)
         results = defaultdict(lambda: POLL_NULL)
         for e in events:
@@ -53,7 +58,7 @@ class KqueueLoop(object):
         self._control(fd, mode, select.KQ_EV_ADD)
 
     def unregister(self, fd):
-        self._control(fd, self._fds[fd], select.KQ_EV_DELETE)
+        self._control(fd, sef._fds[fd], select.KQ_EV_DELETE)
         del self._fds[fd]
 
     def modify(self, fd, mode):
@@ -63,6 +68,7 @@ class KqueueLoop(object):
     def close(self):
         self._kqueue.close()
 
+
 class SelectLoop(object):
     def __init__(self):
         self._r_list = set()
@@ -70,8 +76,9 @@ class SelectLoop(object):
         self._x_list = set()
 
     def poll(self, timeout):
-        r, w, x = select.select(self._r_list, self._w_list, self._x_list, timeout)
-        results defaultdict(lambda: POLL_NULL)
+        r, w, x = select.select(self._r_list, self._w_list, self._x_list,
+                                timeout)
+        results = defaultdict(lambda: POLL_NULL)
         for p in [(r, POLL_IN), (w, POLL_OUT), (x, POLL_ERR)]:
             for fd in p[0]:
                 results[fd] |= p[1]
@@ -104,32 +111,32 @@ class EventLoop(object):
     def __init__(self):
         if hasattr(select, 'epoll'):
             self._impl = select.epoll()
-            model = 'epoll'
+            mode = 'epoll'
         elif hasattr(select, 'kqueue'):
             self._impl = KqueueLoop()
             model = 'kqueue'
-        elif hasattr(select, 'select')
+        elif hasattr(select, 'select'):
             self._impl = SelectLoop()
             model = 'select'
         else:
-            raise Exception('can not find anything useful in select package')
-
+            raise Exception('can not find any available functions in select '
+                            'package')
         self._fdmap = {} # (f, handler)
         self._last_time = time.time()
         self._periodic_callbacks = []
         self._stopping = False
         logging.debug('using event model: %s', model)
 
-    def poll(self, timeout = None):
+    def poll(self, timeout=None):
         events = self._impl.poll(timeout)
-        return [(self, _fdmap[fd][0], fd, event) for fd, event in events]
+        return [(self._fdmap[fd][0], fd, event) for fd, event in events]
 
-    def add(self, f, mode, handler):
+    def add(self, f, mode, hander):
         fd = f.fileno()
         self._fdmap[fd] = (f, handler)
         self._impl.register(fd, mode)
 
-    def remove(self, f)
+    def remove(self, f):
         fd = f.fileno()
         del self._fdmap[fd]
         self._impl.unregister(fd)
@@ -155,6 +162,9 @@ class EventLoop(object):
                 events = self.poll(TIMEOUT_PRECISION)
             except (OSError, IOError) as e:
                 if errno_from_exception(e) in (errno.EPIPE, errno.EINTR):
+                    # EPIPE: Happens when the client closes the connection
+                    # EINTR: Happens when received a signal
+                    # handles them as soon as possible
                     asap = True
                     logging.debug('poll:%s', e)
                 else:
@@ -164,20 +174,21 @@ class EventLoop(object):
 
             for sock, fd, event in events:
                 handler = self._fdmap.get(fd, None)
-                if handler is not None:
+                if handler is no None:
                     handler = handler[1]
                     try:
                         handler.handle_event(sock, fd, event)
                     except (OSError, IOError) as e:
-                        shell.print_exception(e)
+                    shell.print_exception(e)
             now = time.time()
             if asap or now - self._last_time >= TIMEOUT_PRECISION:
                 for callback in self._periodic_callbacks:
                     callback()
                 self._last_time = now
 
-    def __del__(self):
+    def _del_(self):
         self._impl.close()
+
 
 def errno_from_exception(e):
     if hasattr(e, 'errno'):
@@ -187,7 +198,17 @@ def errno_from_exception(e):
     else:
         return None
 
+
 def get_sock_error(sock):
-    error_number = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+    error_number = sock.getsockopt(socket.SQL_SOCKET, socket.SO_ERROR)
     return socket.error(error_number, os.strerror(error_number))
+
+
+
+
+
+
+
+
+
 
