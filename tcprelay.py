@@ -16,7 +16,8 @@ import common
 
 from common import parse_header, ADDRTYPE_AUTH, \
                 ONETIMEAUTH_BYTES, onetimeauth_verify,\
-                onetimeauth_gen
+                onetimeauth_gen, ONETIMEAUTH_CHUNK_BYTES, ONETIMEAUTH_CHUNK_DATA_LEN, \
+
 
 
 TIMEOUT_CLEAN_SIZE = 512
@@ -383,11 +384,255 @@ class TCPRelayHandler(object):
                 self._update_stream(STREAM_UP, WAIT_STATUS_READWRITING)
                 self._udpate_stream(STREAM_DOWN, WAIT_STATUS_READING)
 
+    def _write_to_sock_remote(self, data):
+        self._write_to_sock(data, self._remote_sock)
 
+    def _ota_chunk_data(self, data, data_cb):
+        # spec https://shadowsocks.org/en/spec/one-time-auth.html
+        unchunk_data = b''
+        while len(data) > 0:
+            if self._ota_len == 0:
+                # get DATA.LEN + HMAC-SHA1
+                length = ONETIMEAUTH_CHUNK_BYTES - len(self._ota_buff_head)
+                self._ota_buff_head += data[:length]
+                data = data[length:]
+                if len(self._ota_buff_head) < ONETIMEAUTH_CHUNK_BYTES:
+                    # wait more data
+                    return
+                data_len = self._ota_buff_head[:ONETIMEAUTH_CHUNK_DATA_LEN]
+                self._ota_len = struct.unpack('>H', data_len)[0]
+            length = min(self._ota_len - len(self._ota_buff_data), len(data))
+            self._ota_buff_data += data[:length]
+            data = data[length:]
+            if len(self._ota_buff_data) == self._ota_len:
+                # get a chunk data
+                _hash = self._ota_buff_head[ONETIMEAUTH_CHUNK_DATA_LEN:]
+                _data = self._ota_buff_data
+                index = struct.pack('>I', self._ota_chunk_idx)
+                key = self._encryptor.decipher_iv + index
+                if onetimeauth_verify(_hash, _data, key) is False:
+                    logging.warning('one time auth fail, drop chunk !')
+                else:
+                    unchunk_data += data
+                    self._ota_chunk_idx += 1
+                self._ota_buff_head = b''
+                self._ota_buff_data = b''
+                self._ota_len = 0
+        data_cb(unchunk_data)
+        return
 
+    def _ota_chunk_data_gen(self, data):
+        data_len = struct.pack('>H', len(data))
+        index = struct.pack('>I', self._ota_chunk_idx)
+        key = self._encryptor.cipher_iv + index
+        sha110 = onetimeauth_gen(data, key)
+        self._ota_chunk_idx += 1
+        return data_len + sha110 + data
 
+    def _handle_stage_stream(self, data):
+        if self._is_local:
+            if self._ota_enable_session:
+                data = self._ota_chunk_data_gen(data)
+            data = self._encryptor.encrypt(data)
+            self._write_to_sock(data, self._remote_sock)
+        else:
+            if self._ota_enable_session:
+                self._ota_chunk_data(data, self._write_to_sock_remote)
+            else:
+                self._write_to_sock(data, self._remote_sock)
+        return
 
+    def _check_auth_method(self, data):
+        # VER, NMETHODS, and at least 1 METHODS
+        if len(data) < 3:
+            logging.warning('method selection header too short')
+            raise BadSocksHeader
+        socks_version = common.ord(data[0])
+        nmethods = common.ord(data[1])
+        if socks_version != 5:
+            logging.warning('unsupported SOCKS protocol version ' +
+                            str(socks_version))
+            raise BadSocksHeader
+        if nmethods < 1 or len(data) != nmethods + 2:
+            logging.warning('NMETHODS and number of METHODS mismatch')
+            raise BadSocksHeader
+        noauth_exist = False
+        for method in data[2:]:
+            if common.ord(method) == METHOD_NOAUTH:
+                noauth_exist = True
+                break
+        if not noauth_exist:
+            logging.warning('none of SOCKS METHDO\'s'
+                            'requested by client is supported')
+            raise NoAcceptableMethods
 
+    def _hanble_stage_init(self, data):
+        try:
+            self._check_auth_method(data)
+        except BadSocksHeader:
+            self.destroy()
+            return
+        except NoAcceptableMethods:
+            self._write_to_sock(b'\x05\xff', self._local_sock)
+            self.destroy()
+            return
+
+        self._write_to_sock(b'\x05\00', self._local_sock)
+        self._stage = STAGE_ADDR
+
+    def _on_local_read(self):
+        # handle all local read events and dispatch them to methods for
+        # each stage
+        if not self._local_sock:
+            return
+        is_local = self._is_local
+        data = None
+        try:
+            data = self._local_sock.recv(BUF_SIZE)
+        except (OSError, IOError) as e:
+            if eventloop.errno_from_exception(e) in \
+                    (errno.ETIMEDOUT, errno.EAGAIN, errno.EWOULDBLOCK):
+                return
+        if not data:
+            self.destroy()
+            return
+        self._udpate_activity(len(data))
+        if not is_local:
+            data = self._encryptor.decrypt(data)
+            if not data:
+                return
+        if self._stage == STAGE_STREAM:
+            self._handle_stage_stream(data)
+            return
+        elif is_local and self._stage == STAGE_INIT:
+            self._handle_stage_init(data)
+        elif self._stage == STAGE_CONNECTING:
+            self._handle_stage_connecting(data)
+        elif (is_local and self._stage == STAGE_ADDR) or \
+                (not is_local and self._stage == STAGE_INIT):
+            self._handle_stage_addr(data)
+
+    def _on_remote_read(self):
+        # handle all remote read events
+        data = None
+        try:
+            data = self._remote_sock.recv(BUF_SIZE)
+
+        except (OSError, IOError) as e:
+            if eventloop.errno_from_exception(e) in \
+                    (errno.ETIMEDOUT, errno.EAGAIN, errno.EWOULDBLOCK):
+                return
+        if not data:
+            self.destroy()
+            return
+        self._update_activity(len(data))
+        if self._is_local:
+            data = self._encryptor.decrypt(data)
+        else:
+            data = self._encryptor.encrypt(data)
+        try:
+            self._write_to_sock(data, self._local_sock)
+        except Exception as e:
+            shell.print_exception(e)
+            if self._config['verbose']:
+                traceback.print_exc()
+            # TODO use logging when debug completed
+            self.destroy()
+
+    def _on_local_write(self):
+        # handle local writable event
+        if self._data_to_write_to_local:
+            data = b''.join(self._data_to_write_to_local)
+            self._data_to_write_to_local = []
+            self._write_to_sock(data, self._local_sock)
+        else:
+            self._update_stream(STREAM_DOWN, WAIT_STATUS_READING)
+
+    def _on_remote_write(self):
+        # handle remote writable event
+        self._stage = STAGE_STREAM
+        if self._data_to_write_to_remote:
+            data = b''.join(self._data_to_write_to_remote)
+            self._data_to_write_to_remote = []
+            self._write_to_sock(data, self._remote_sock)
+        else:
+            self._update_stream(STREAM_UP, WAIT_STATUS_READING)
+
+    def _on_local_error(self):
+        logging.debug('got local error')
+        if self._local_sock:
+            logging.error(eventloop.get_sock_error(self._local_sock))
+        self.destroy()
+
+    def _on_remote_error(self):
+        logging.debug('got remote error')
+        if self._remote_sock:
+            logging.error(eventloop.get_sock_error(self._remote_sock))
+        self.destroy()
+
+    def handle_event(self, sock, event):
+        # handle all events in this handler and dispatch them to methods
+        if self._stage ==  STAGE_DESTROYED:
+            logging.debug('ignore handle_event: destroyed')
+            return
+        # order is important
+        if sock == self._remote_sock:
+            if event & eventloop.POLL_ERR:
+                self._on_remote_error()
+                if self._stage == STAGE_DESTROYED:
+                    return
+            if event & (eventloop.POLL_IN | eventloop.POLL_HUP):
+                self._on_remote_read()
+                if self._stage == STAGE_DESTROYED:
+                    return
+            if event & eventloop.POLL_OUT:
+                self._on_remote_write()
+        elif sock == self._local_sock:
+            if event & eventloop.POLL_ERR:
+                self._on_local_error()
+                if self._stage == STAGE_DESTROYED:
+                    return
+            if event & (eventloop.POLL_IN | eventloop.POLL_HUP):
+                self._on_local_read()
+                if self._stage == STAGE_DESTROYED:
+                    return
+            if event & eventloop.POLL_OUT:
+                self._on_local_write()
+        else:
+            logging.warning('unkown socket')
+
+    def destroy(self):
+        # destroy the handler and release any resources
+        # promises:
+        # 1. destroy won't make another destroy() call inside
+        # 2. destroy releases resources so it prevents future call to destroy
+        # 3. destroy won't raise any exceptions
+        # if any of the promises are broken, it indicates a bug has benn
+        # introduced! mostly likely memory leaks, etc
+        if self._stage == STAGE_DESTROYED:
+            # this couldn't happen
+            logging.debug('already destroyed')
+            return
+        self._stage = STAGE_DESTROYED
+        if self._remote_address:
+            logging.debug('destroy: %s:%d' %
+                          self._remote_address)
+        else:
+            logging.debug('destroy')
+        if self._remote_sock:
+            logging.debug('destroying remote')
+            self._loop.remove(self._remote_sock)
+            del self._fd_to_handlers[self._remote_sock.fileno()]
+            self._remote_sock.close()
+            self._remote_sock = None
+        if self._local_sock:
+            logging.debug('destroying local')
+            self._loop.remove(self._local_sock)
+            del self._fd_to_handlers[self._local_sock.fileno()]
+            self._local_sock.close()
+            self._lcoal_sock = None
+        self._dns_resolver.remove_callback(self._handle_dns_resolved)
+        self._server.remove_handler(self)
 
 
 
