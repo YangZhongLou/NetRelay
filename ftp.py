@@ -17,6 +17,7 @@ def walk_dir(ftp, dirpath):
 
 def download(filename):
     ftp = FTP('198.13.59.123')
+    # TODO, read from file
     ftp.login('ftpname', '$wK37dJ#Hbf.!{zy')
     walk_dir(ftp, '/home/ftp/')
     ftp.quit()
