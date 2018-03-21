@@ -4,12 +4,13 @@
 # https://github.com/brandon-rhodes/fopnp/blob/m/py3/chapter07/srv_asyncio2.py
 # Asynchronous I/O inside an "asyncio" coroutine.
 
-import asyncio, zen_utils, constants, pickle
+import asyncio, zen_utils, constants, pickle, os
 from pytube import YouTube
 
 def download_video(url):
-    YouTube(url).streams.first().download()
-    return True
+    stream = YouTube(url).streams.first()
+    stream.download(constants.FTP_DIR)
+    return (True, stream.default_filename)
 
 @asyncio.coroutine
 def handle_conversation(reader, writer):
@@ -29,12 +30,15 @@ def handle_conversation(reader, writer):
             data += more_data
         # tuple: (url, option)
         tuple = pickle.loads(data[0:len(data) - 2])
-        if tuple[2] == constants.OPTION_DELETE_ALL_FILE:
-            #TODO
-            writer.write(('', constants.PHASE_NONE))
+        if tuple[2] == constants.OPTION_DELETE_FILES:
+            file_list = tuple[1]
+            for filename in file_list:
+                print('Delete file:%s' % filename)
+                os.remove(constants.FTP_DIR + filename)
         elif tuple[2] == constants.OPTION_DOWNLOAD_FILE:
-            if download_video(tuple[1]):
-                writer.write(pickle.dumps(('', constants.PHASE_VPS_DOWNLOADED)) + constants.END_SYMBOL)
+            result = download_video(tuple[1])
+            if result[1]:
+                writer.write(pickle.dumps((result[2], constants.PHASE_VPS_DOWNLOADED)) + constants.END_SYMBOL)
             else:
                 print('Error, download file:' + tuple[1] + ' failed!')
 

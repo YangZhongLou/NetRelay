@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
 import argparse, random, socket, zen_utils, ftp, constants
-import pickle
+import pickle, config
+
+
+file_list = []
+
 
 def get_urls():
     urls = ['https://www.youtube.com/watch?v=k9Nz2z1jTFQ&list=PLslgisHe5tBPckSYyKoU3jEA4bqiFmNBJ']
@@ -20,7 +24,11 @@ def receive(sock, suffix):
         if not data:
             raise IOError('received {!r} then socket closed'.format(message))
         message += data
-    return message
+
+    # tuple: (filename, option)
+    tuple = pickle.loads(message[0:len(data) - 2])
+    file_list.append(tuple[1])
+    return tuple
 
 
 def client(address):
@@ -34,15 +42,19 @@ def client(address):
         print(url, receive(sock, constants.END_SYMBOL))
 
     # using ftp to download contents from vps
-    ftp.download()
+    for filename in file_list:
+        print('Downloading file:%s...' % filename)
+        ftp.download(filename)
 
     # when downloaded, delete them all, since the limited disk space of vps
-    sock.sendall(pickle.dumps(('', constants.OPTION_DELETE_ALL_FILE)) + constants.END_SYMBOL)
+    sock.sendall(pickle.dumps((file_list, constants.OPTION_DELETE_FILES)) + constants.END_SYMBOL)
     sock.close()
 
+
 if __name__ == '__main__':
+    config_data = config.get_config()
     parser = argparse.ArgumentParser(description='Example client')
-    parser.add_argument('host', help='IP or hostname', default='198.13.59.123')
+    parser.add_argument('host', help='IP or hostname', default=config_data['server_ip'])
     parser.add_argument('-p', metavar='port', type=int, default=1060,
                         help='TCP port (default 1060)')
 

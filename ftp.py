@@ -1,23 +1,14 @@
-from ftplib import FTP, error_perm
-
-downloaded = {}
-
-def walk_dir(ftp, dirpath):
-    original_dir = ftp.pwd()
-    try:
-        ftp.cwd(dirpath)
-    except error_perm:
-        return  # ignore non-directores and ones we cannot enter
-    print(dirpath)
-    names = sorted(ftp.nlst())
-    for name in names:
-        print('################ name:', name)
-        walk_dir(ftp, dirpath + '/' + name)
-    ftp.cwd(original_dir)  # return to cwd of our caller
+from ftplib import FTP
+import config, constants
 
 def download(filename):
-    ftp = FTP('198.13.59.123')
-    # TODO, read from file
-    ftp.login('ftpname', '$wK37dJ#Hbf.!{zy')
-    walk_dir(ftp, '/home/ftp/')
+    config_data = config.get_config()
+
+    ftp = FTP(config_data['server_ip'])
+    ftp.login(config_data['username'], config_data['password'])
+    ftp.cwd(constants.FTP_DIR)
+    with open(filename, 'wb') as f:
+        ftp.retrbinary('RETR %s' % filename, f.write)
+        print('finished downloading %s' % filename)
+
     ftp.quit()
