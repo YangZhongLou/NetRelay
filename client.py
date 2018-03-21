@@ -32,6 +32,7 @@ def receive(sock, suffix):
 
 
 def client(address):
+    print('connecting ', address)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(address)
     urls = get_urls()
@@ -53,11 +54,5 @@ def client(address):
 
 if __name__ == '__main__':
     config_data = config.get_config()
-    parser = argparse.ArgumentParser(description='Example client')
-    parser.add_argument('host', help='IP or hostname', default=config_data['server_ip'])
-    parser.add_argument('-p', metavar='port', type=int, default=1060,
-                        help='TCP port (default 1060)')
-
-    args = parser.parse_args()
-    address = (args.host, args.p)
+    address = (config_data['server_ip'], 1060)
     client(address)

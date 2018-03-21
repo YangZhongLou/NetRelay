@@ -7,6 +7,6 @@ def get_config():
     if 'server_ip' in config_data.keys():
         return config_data
 
-    with open('NetRelayConfig.json', 'r') as f:
+    with open('net_relay_config.json', 'r') as f:
         config_data = json.load(f)
     return config_data
