@@ -10,7 +10,10 @@ from pytube import YouTube
 def download_video(url):
     print('Downloading %s' % url)
     stream = YouTube(url).streams.first()
-    stream.download(constants.FTP_DIR)
+    if not os.path.exists(constants.FTP_DIR + stream.default_filename):
+        stream.download(constants.FTP_DIR)
+    else:
+        print('Already downloaded %s' % url)
     return (True, stream.default_filename)
 
 @asyncio.coroutine

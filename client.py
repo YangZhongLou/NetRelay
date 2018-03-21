@@ -26,7 +26,7 @@ def receive(sock, suffix):
         message += data
 
     # tuple: (filename,)
-    tuple = pickle.loads(message[0:len(data) - 1])
+    tuple = pickle.loads(message[0:len(message) - 1])
     file_list.append(tuple[0])
     return tuple
 
