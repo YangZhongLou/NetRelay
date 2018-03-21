@@ -10,7 +10,6 @@ from pytube import YouTube
 def download_video(url):
     print('Downloading %s' % url)
     stream = YouTube(url).streams.first()
-    print('Video default name:%s', stream.default_filename)
     if not os.path.exists(constants.FTP_DIR + stream.default_filename):
         stream.download(constants.FTP_DIR)
         print('Downloaded %s' % stream.default_filename)
