@@ -10,8 +10,10 @@ from pytube import YouTube
 def download_video(url):
     print('Downloading %s' % url)
     stream = YouTube(url).streams.first()
+    print('Video default name:%s', stream.default_filename)
     if not os.path.exists(constants.FTP_DIR + stream.default_filename):
         stream.download(constants.FTP_DIR)
+        print('Downloaded %s' % stream.default_filename)
     else:
         print('Already downloaded %s' % url)
     return (True, stream.default_filename)
@@ -42,7 +44,7 @@ def handle_conversation(reader, writer):
         elif tuple[1] == constants.OPTION_DOWNLOAD_FILE:
             result = download_video(tuple[0])
             if result[0]:
-                writer.write(pickle.dumps((result[1])) + constants.END_SYMBOL)
+                writer.write(pickle.dumps((result[1], )) + constants.END_SYMBOL)
             else:
                 print('Error, download file:' + tuple[0] + ' failed!')
 
