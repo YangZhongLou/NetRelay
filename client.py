@@ -10,7 +10,7 @@ file_list = []
 def get_urls():
     urls = ['https://www.youtube.com/watch?v=k9Nz2z1jTFQ&list=PLslgisHe5tBPckSYyKoU3jEA4bqiFmNBJ']
     for i in range(2, 25):
-        urls.append('https://www.youtube.com/watch?v=wENIThh7XWo&list=PLslgisHe5tBPckSYyKoU3jEA4bqiFmNBJ&index='+ i)
+        urls.append('https://www.youtube.com/watch?v=wENIThh7XWo&list=PLslgisHe5tBPckSYyKoU3jEA4bqiFmNBJ&index='+ str(i))
     urls.append('https://www.youtube.com/watch?v=uxYMciBcp-w&index=26&list=PLslgisHe5tBPckSYyKoU3jEA4bqiFmNBJ')
     return urls
 

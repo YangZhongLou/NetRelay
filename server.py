@@ -31,17 +31,17 @@ def handle_conversation(reader, writer):
         print('Message received from client is:', data)
         # tuple: (url, option)
         tuple = pickle.loads(data[0:len(data) - 1])
-        if tuple[2] == constants.OPTION_DELETE_FILES:
-            file_list = tuple[1]
+        if tuple[1] == constants.OPTION_DELETE_FILES:
+            file_list = tuple[0]
             for filename in file_list:
                 print('Delete file:%s' % filename)
                 os.remove(constants.FTP_DIR + filename)
-        elif tuple[2] == constants.OPTION_DOWNLOAD_FILE:
-            result = download_video(tuple[1])
-            if result[1]:
-                writer.write(pickle.dumps((result[2], constants.PHASE_VPS_DOWNLOADED)) + constants.END_SYMBOL)
+        elif tuple[1] == constants.OPTION_DOWNLOAD_FILE:
+            result = download_video(tuple[0])
+            if result[0]:
+                writer.write(pickle.dumps((result[1], constants.PHASE_VPS_DOWNLOADED)) + constants.END_SYMBOL)
             else:
-                print('Error, download file:' + tuple[1] + ' failed!')
+                print('Error, download file:' + tuple[0] + ' failed!')
 
 
 if __name__ == '__main__':
