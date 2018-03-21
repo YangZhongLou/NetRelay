@@ -4,7 +4,7 @@ config_data = {}
 
 def get_config():
     global config_data
-    if config_data['server_ip'] != None:
+    if 'server_ip' in config_data.keys():
         return config_data
 
     with open('NetRelayConfig.json', 'r') as f:
