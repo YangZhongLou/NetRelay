@@ -30,7 +30,7 @@ def handle_conversation(reader, writer):
             data += more_data
         print('Message received from client is:', data)
         # tuple: (url, option)
-        tuple = pickle.loads(data[0:len(data) - 2])
+        tuple = pickle.loads(data[0:len(data) - 1])
         if tuple[2] == constants.OPTION_DELETE_FILES:
             file_list = tuple[1]
             for filename in file_list:
