@@ -8,6 +8,7 @@ import asyncio, zen_utils, constants, pickle, os
 from pytube import YouTube
 
 def download_video(url):
+    print('Downloading %s' % url)
     stream = YouTube(url).streams.first()
     stream.download(constants.FTP_DIR)
     return (True, stream.default_filename)
@@ -28,7 +29,6 @@ def handle_conversation(reader, writer):
                     print('Client {} closed socket normally'.format(address))
                 return
             data += more_data
-        print('Message received from client is:', data)
         # tuple: (url, option)
         tuple = pickle.loads(data[0:len(data) - 1])
         if tuple[1] == constants.OPTION_DELETE_FILES:
@@ -39,7 +39,7 @@ def handle_conversation(reader, writer):
         elif tuple[1] == constants.OPTION_DOWNLOAD_FILE:
             result = download_video(tuple[0])
             if result[0]:
-                writer.write(pickle.dumps((result[1], constants.PHASE_VPS_DOWNLOADED)) + constants.END_SYMBOL)
+                writer.write(pickle.dumps((result[1])) + constants.END_SYMBOL)
             else:
                 print('Error, download file:' + tuple[0] + ' failed!')
 

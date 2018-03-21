@@ -25,9 +25,9 @@ def receive(sock, suffix):
             raise IOError('received {!r} then socket closed'.format(message))
         message += data
 
-    # tuple: (filename, option)
+    # tuple: (filename,)
     tuple = pickle.loads(message[0:len(data) - 1])
-    file_list.append(tuple[1])
+    file_list.append(tuple[0])
     return tuple
 
 
