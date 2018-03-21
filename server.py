@@ -28,6 +28,7 @@ def handle_conversation(reader, writer):
                     print('Client {} closed socket normally'.format(address))
                 return
             data += more_data
+        print('Message received from client is:', data)
         # tuple: (url, option)
         tuple = pickle.loads(data[0:len(data) - 2])
         if tuple[2] == constants.OPTION_DELETE_FILES:
