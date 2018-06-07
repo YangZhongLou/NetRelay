@@ -8,6 +8,9 @@ Configure NetRelayConfig.json
 
 Currently, only used to download video from youtube.
 
+To run server:
+    python3 server.py ""
+
 Environment:
 -FTP server.
 -pytube. To install pytube, "pip install pytube" for python2, "pip3 install pytube" for python3
