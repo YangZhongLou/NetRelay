@@ -48,7 +48,13 @@ def handle_conversation(reader, writer):
                 print('Error, download file:' + tuple[0] + ' failed!')
 
 
+def make_ftp_dir():
+    if not os.path.exists("/home/ftp/"):
+        os.system("mkdir /home/ftp/")
+
 if __name__ == '__main__':
+    make_ftp_dir()
+
     address = zen_utils.parse_command_line('asyncio server using coroutine')
     loop = asyncio.get_event_loop()
     coro = asyncio.start_server(handle_conversation, *address)
